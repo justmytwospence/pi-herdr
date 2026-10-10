@@ -381,7 +381,8 @@ export class Children {
   async close(name: string): Promise<string> {
     const rec = this.get(name);
     const r = await this.deps.call("pane.close", { pane_id: rec.paneId });
-    if (r.error && r.error.code !== "not_found") throw new Error(`herdr could not close ${rec.name}: ${errorText(r)}`);
+    // Already gone (herdr says pane_not_found, not_found, ...): closing it is done.
+    if (r.error && !/not_found$/u.test(r.error.code)) throw new Error(`herdr could not close ${rec.name}: ${errorText(r)}`);
     if (rec.awaiting) this.deps.hold(rec, false);
     rec.awaiting = false;
     rec.closed = true;

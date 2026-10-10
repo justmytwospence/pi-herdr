@@ -177,4 +177,13 @@ describe("children", () => {
     expect(childPreamble("opencode", "w1:p1", { where: "tab", cwd: "/r" })).toMatch(/^\[You are a child opencode session\. Another opencode session/u);
     expect(childPreamble("pi", "w1:p1", { where: "tab", cwd: "/r" })).not.toContain("worktree");
   });
+
+  it("treats a pane that is already gone as closed", async () => {
+    const w = world();
+    await w.children.spawn({ task: "t", name: "c", cwd: "/repo" });
+    const gone = new Children({ ...(w.children as any).deps, call: async (method: string) => (method === "pane.close" ? { error: { code: "pane_not_found", message: "pane w1:p2 not found" } } : { result: {} }) });
+    gone.restore([w.children.get("c")]);
+    expect(await gone.close("c")).toContain("Closed c's pane");
+    expect(gone.get("c").closed).toBe(true);
+  });
 });
