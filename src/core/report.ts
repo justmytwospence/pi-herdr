@@ -30,15 +30,18 @@ abstract class Reporter {
   private chain: Promise<unknown> = Promise.resolve();
 
   protected readonly call: Call;
+  /** herdr orders reports by `seq` per source, so two reporters on one pane need two sources. */
+  readonly source: string;
 
-  constructor(call: Call) {
+  constructor(call: Call, source = SOURCE) {
     this.call = call;
+    this.source = source;
   }
 
   protected abstract send(params: Record<string, unknown>): Promise<unknown>;
 
   protected enqueue(params: Record<string, unknown>): Promise<unknown> {
-    this.chain = this.chain.then(() => this.send({ ...params, source: SOURCE, seq: nextSeq() }));
+    this.chain = this.chain.then(() => this.send({ ...params, source: this.source, seq: nextSeq() }));
     return this.chain;
   }
 
@@ -89,8 +92,8 @@ export class PaneReporter extends Reporter {
   /** The agent herdr's own integration reports for this pane: "pi", "opencode". */
   readonly agent: string;
 
-  constructor(call: Call, paneId: string, agent = "pi") {
-    super(call);
+  constructor(call: Call, paneId: string, agent = "pi", source = SOURCE) {
+    super(call, source);
     this.paneId = paneId;
     this.agent = agent;
   }
@@ -126,8 +129,8 @@ export class PaneReporter extends Reporter {
 export class WorkspaceReporter extends Reporter {
   readonly workspaceId: string;
 
-  constructor(call: Call, workspaceId: string) {
-    super(call);
+  constructor(call: Call, workspaceId: string, source = SOURCE) {
+    super(call, source);
     this.workspaceId = workspaceId;
   }
 
