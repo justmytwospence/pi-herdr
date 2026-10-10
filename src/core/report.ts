@@ -86,10 +86,13 @@ export class PaneReporter extends Reporter {
   private displayAgent: string | undefined;
 
   readonly paneId: string;
+  /** The agent herdr's own integration reports for this pane: "pi", "opencode". */
+  readonly agent: string;
 
-  constructor(call: Call, paneId: string) {
+  constructor(call: Call, paneId: string, agent = "pi") {
     super(call);
     this.paneId = paneId;
+    this.agent = agent;
   }
 
   protected send(params: Record<string, unknown>) {
@@ -97,8 +100,8 @@ export class PaneReporter extends Reporter {
   }
 
   /**
-   * The pane's title and displayed agent name, shown only while herdr's pi integration holds the
-   * pane (`applies_to_source`), so a shell left behind after pi exits keeps its own.
+   * The pane's title and displayed agent name, shown only while herdr's integration for the agent
+   * holds the pane (`applies_to_source`), so a shell left behind after it exits keeps its own.
    */
   setPresentation(title: string | undefined, displayAgent: string | undefined): Promise<unknown> {
     const t = title?.trim() ? title.trim().slice(0, 80) : undefined;
@@ -107,8 +110,8 @@ export class PaneReporter extends Reporter {
     this.title = t;
     this.displayAgent = d;
     return this.enqueue({
-      agent: "pi",
-      applies_to_source: "herdr:pi",
+      agent: this.agent,
+      applies_to_source: `herdr:${this.agent}`,
       ...(t ? { title: t } : { clear_title: true }),
       ...(d ? { display_agent: d } : { clear_display_agent: true }),
     });
