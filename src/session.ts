@@ -1,9 +1,9 @@
-// A child's reply: the text of the last assistant message in its pi session file (JSONL, newest
-// entries last), without pi-next-prompt's `<next>` suggestion, cut to what fits in a message.
+// pi children: how they start (`pi --name <name> [--model] [--thinking]`), and their reply: the
+// text of the last assistant message in the session file (JSONL, newest entries last), without
+// the `<next>` suggestion, cut to what fits in a message.
 import { readFileSync } from "node:fs";
-
-export const MAX_LINES = 2_000;
-export const MAX_BYTES = 50 * 1024;
+import type { ChildAgent } from "./core/children.ts";
+import { clipReply, stripNext } from "./core/text.ts";
 
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -33,26 +33,6 @@ export function lastAssistantText(jsonl: string): string | undefined {
   return undefined;
 }
 
-export function stripNext(text: string): string {
-  return text.replace(/\n?\s*<next>[\s\S]*?<\/next>\s*$/u, "").trimEnd();
-}
-
-/** Cuts to MAX_LINES / MAX_BYTES, keeping the end (where conclusions are), with a note. */
-export function clipReply(text: string, source: string): string {
-  let out = text;
-  let cut = false;
-  const lines = out.split("\n");
-  if (lines.length > MAX_LINES) {
-    out = lines.slice(-MAX_LINES).join("\n");
-    cut = true;
-  }
-  if (Buffer.byteLength(out) > MAX_BYTES) {
-    out = Buffer.from(out).subarray(-MAX_BYTES).toString().replace(/^[^\n]*\n/u, "");
-    cut = true;
-  }
-  return cut ? `[earlier part cut; full reply in ${source}]\n${out}` : out;
-}
-
 export function readReply(sessionPath: string): string | undefined {
   let raw: string;
   try {
@@ -63,3 +43,15 @@ export function readReply(sessionPath: string): string | undefined {
   const text = lastAssistantText(raw);
   return text === undefined ? undefined : clipReply(stripNext(text), sessionPath);
 }
+
+/** pi children: `pi --name <name> [--model] [--thinking]`, replies from their session files. */
+export const PI_CHILD: ChildAgent = {
+  kind: "pi",
+  args: (opts, name) => {
+    const args = ["--name", name];
+    if (opts.model) args.push("--model", opts.model);
+    if (opts.thinking) args.push("--thinking", opts.thinking);
+    return args;
+  },
+  reply: async (rec) => (rec.session ? readReply(rec.session) : undefined),
+};

@@ -1,3 +1,5 @@
+// Shared verbatim by pi-herdr and opencode-herdr (src/core).
+//
 // The space token `pr`: the pull request for the checkout's branch, from `gh pr view`, so each
 // worktree's space in herdr's sidebar says where its PR stands ("#123 ✓ approved"). Refreshed on
 // a timer and after each turn (pushes happen in turns); cleared when the branch has no PR.

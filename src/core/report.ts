@@ -1,3 +1,5 @@
+// Shared verbatim by pi-herdr and opencode-herdr (src/core).
+//
 // Display-only metadata for this pane (tokens, title, displayed agent name) and its workspace
 // (tokens). herdr's pi integration stays the only authority over the pane's state: none of this
 // changes working/blocked/idle, waits or notifications.

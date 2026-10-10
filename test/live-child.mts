@@ -2,8 +2,9 @@
 //   node --experimental-strip-types test/live-child.mts [tab|split]
 // Starts a pi child, asks it to reply PONG, waits for the reply, then closes it.
 import { execFile } from "node:child_process";
-import { Children } from "../src/children.ts";
-import { herdrTarget, socketCall } from "../src/herdr.ts";
+import { Children } from "../src/core/children.ts";
+import { herdrTarget, socketCall } from "../src/core/herdr.ts";
+import { PI_CHILD } from "../src/session.ts";
 
 const target = herdrTarget();
 if (!target) throw new Error("run inside herdr");
@@ -13,6 +14,7 @@ let resolveReply: (t: string) => void;
 const replied = new Promise<string>((r) => (resolveReply = r));
 const children = new Children({
   call,
+  agent: PI_CHILD,
   selfPane: target.paneId,
   exec: (cmd, args, cwd) => new Promise((res) => execFile(cmd, args, { cwd }, (e, so, se) => res({ code: e ? 1 : 0, stdout: so, stderr: se }))),
   persist: () => {},

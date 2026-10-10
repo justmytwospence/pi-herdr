@@ -12,13 +12,14 @@
 import { execFile } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { ACTIVITY_CHANNELS, Activity, type HoldEvent } from "./activity.ts";
+import { ACTIVITY_CHANNELS, Activity, type HoldEvent } from "./core/activity.ts";
 import { Bridge, type NotifyEvent, type SplitEvent, type TokenEvent } from "./bridge.ts";
-import { type ChildRecord, Children, type Exec, type Where } from "./children.ts";
-import { herdrTarget, socketCall } from "./herdr.ts";
+import { type ChildRecord, Children, type Exec, type Where } from "./core/children.ts";
+import { herdrTarget, socketCall } from "./core/herdr.ts";
 import { displayAgent, firstUserText, titleFromPrompt } from "./identity.ts";
-import { PR_FIELDS, parsePrView, prToken } from "./pr.ts";
-import { PaneReporter, WorkspaceReporter } from "./report.ts";
+import { PR_FIELDS, parsePrView, prToken } from "./core/pr.ts";
+import { PaneReporter, WorkspaceReporter } from "./core/report.ts";
+import { PI_CHILD } from "./session.ts";
 
 const TOOL = "herdr_child";
 const CHILD_ENTRY = "pi-herdr:child";
@@ -33,6 +34,7 @@ const exec: Exec = (cmd, args, cwd) =>
       resolve({ code, stdout: String(stdout ?? ""), stderr: String(stderr ?? (err ? err.message : "")) });
     });
   });
+
 
 const Params = Type.Object({
   action: Type.Union(
@@ -117,6 +119,7 @@ export default function piHerdr(pi: ExtensionAPI) {
 
   const children = new Children({
     call,
+    agent: PI_CHILD,
     selfPane: target.paneId,
     exec,
     persist: (rec) => pi.appendEntry(CHILD_ENTRY, rec),

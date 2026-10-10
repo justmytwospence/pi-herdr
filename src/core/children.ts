@@ -1,16 +1,17 @@
-// Herdr children: interactive pi sessions this session starts in a herdr tab, a split beside it,
-// or a new worktree's space, gives a task, and hears back from. Unlike a subagent (a headless
-// `pi --mode rpc` child that lives for one call), a child is an ordinary pi in its own pane: you
-// can watch it, type to it, take it over, and it outlives this session's turn.
+// Shared verbatim by pi-herdr and opencode-herdr (src/core).
+//
+// Herdr children: interactive agent sessions (pi children for pi, opencode children for opencode)
+// that this session starts in a herdr tab, a split beside it, or a new worktree's space, gives a
+// task, and hears back from. Unlike a subagent (headless, living for one call), a child is an
+// ordinary interactive session in its own pane: you can watch it, type to it, take it over, and it
+// outlives this session's turn.
 //
 // The parent prompts the child through herdr (`agent.prompt`), then watches herdr's semantic state
 // for that pane. When a turn the parent asked for settles (idle/done after it was seen working, or
-// a new `completion_seq`), the reply is the last assistant message in the child's session file,
-// whose path herdr's pi integration reports. Turns the user starts in the child's pane are not
-// sent back.
-import { type Call, errorText } from "./herdr.ts";
-import { splitDirection } from "./bridge.ts";
-import { readReply } from "./reply.ts";
+// a new `completion_seq`), the host reads the reply from the child's session, which herdr's
+// integration for that agent reports (a pi session file, an opencode session id). Turns the user
+// starts in the child's pane are not sent back.
+import { type Call, errorText, splitDirection } from "./herdr.ts";
 
 export type Where = "tab" | "split" | "worktree";
 
@@ -30,8 +31,19 @@ export interface ChildRecord {
   /** herdr's sequence numbers when that turn was asked for. */
   baseline?: { completionSeq?: number; stateSeq?: number };
   sawWorking?: boolean;
-  sessionPath?: string;
+  /** The child's session as herdr reports it: a pi session path, an opencode session id. */
+  session?: string;
   closed?: boolean;
+}
+
+/** What differs between hosts: which agent herdr starts, how, and how its reply is read. */
+export interface ChildAgent {
+  /** herdr's agent kind (`agent.start`), also the session kind: "pi", "opencode". */
+  kind: string;
+  /** Command-line arguments for the child, after herdr's canonical executable. */
+  args(opts: SpawnOptions, name: string): string[];
+  /** The child's last reply, read from its session, or undefined. */
+  reply(rec: ChildRecord): Promise<string | undefined>;
 }
 
 export interface Exec {
@@ -40,6 +52,7 @@ export interface Exec {
 
 export interface ChildrenDeps {
   call: Call;
+  agent: ChildAgent;
   /** This session's own pane. */
   selfPane: string;
   exec: Exec;
@@ -86,9 +99,9 @@ export function slugName(text: string): string {
   return out.slice(0, 24);
 }
 
-export function childPreamble(parentPane: string, rec: Pick<ChildRecord, "where" | "branch" | "cwd">): string {
+export function childPreamble(kind: string, parentPane: string, rec: Pick<ChildRecord, "where" | "branch" | "cwd">): string {
   const lines = [
-    `[You are a child pi session. Another pi session (herdr pane ${parentPane}) started you and gave you the task below. Your final reply to each of its messages is sent back to it, so end each turn with a self-contained answer: what you did, what you found, and what is left. The user can also talk to you directly in this pane.`,
+    `[You are a child ${kind} session. Another ${kind} session (herdr pane ${parentPane}) started you and gave you the task below. Your final reply to each of its messages is sent back to it, so end each turn with a self-contained answer: what you did, what you found, and what is left. The user can also talk to you directly in this pane.`,
   ];
   if (rec.where === "worktree" && rec.branch) lines.push(`You are in a git worktree of your own (${rec.cwd}) on branch ${rec.branch}: work and commit there.`);
   return `${lines.join(" ")}]\n\n`;
@@ -192,14 +205,13 @@ export class Children {
       if (!paneId) throw new Error(`herdr could not create a tab: ${errorText(r)}`);
     }
 
-    const args = ["--name", name];
-    if (opts.model) args.push("--model", opts.model);
-    if (opts.thinking) args.push("--thinking", opts.thinking);
+    const { agent } = this.deps;
+    const args = agent.args(opts, name);
     // A new pane's shell takes a moment to reach its prompt (agent_pane_busy until then).
-    let start = await call("agent.start", { name, kind: "pi", pane_id: paneId, args, timeout_ms: 90_000 }, 95_000);
+    let start = await call("agent.start", { name, kind: agent.kind, pane_id: paneId, args, timeout_ms: 90_000 }, 95_000);
     for (let i = 0; start.error?.code === "agent_pane_busy" && i < 30; i++) {
       await new Promise((r) => setTimeout(r, this.deps.readyPollMs ?? 500));
-      start = await call("agent.start", { name, kind: "pi", pane_id: paneId, args, timeout_ms: 90_000 }, 95_000);
+      start = await call("agent.start", { name, kind: agent.kind, pane_id: paneId, args, timeout_ms: 90_000 }, 95_000);
     }
     const rec: ChildRecord = {
       name,
@@ -217,14 +229,14 @@ export class Children {
     if (start.error) {
       if (start.error.code === "agent_not_ready") {
         this.save(rec);
-        throw new Error(`pi started in ${name}'s pane (${paneId}) but is waiting on a dialog, so the task was not sent. Ask the user to answer it there, then use action=send.`);
+        throw new Error(`${agent.kind} started in ${name}'s pane (${paneId}) but is waiting on a dialog, so the task was not sent. Ask the user to answer it there, then use action=send.`);
       }
       if (where !== "worktree" || !workspaceId) await call("pane.close", { pane_id: paneId });
-      throw new Error(`pi did not start in the new pane: ${errorText(start)}`);
+      throw new Error(`${agent.kind} did not start in the new pane: ${errorText(start)}`);
     }
-    // agent.start returns before pi takes input (its extensions still loading).
+    // agent.start returns before the agent takes input (pi: its extensions still loading).
     await this.waitReady(rec);
-    await this.prompt(rec, childPreamble(selfPane, rec) + opts.task);
+    await this.prompt(rec, childPreamble(agent.kind, selfPane, rec) + opts.task);
     return rec;
   }
 
@@ -235,14 +247,14 @@ export class Children {
       const info = a.result?.agent;
       if (info?.agent_status === "blocked") {
         this.save(rec);
-        throw new Error(`pi started in ${rec.name}'s pane (${rec.paneId}) but is waiting on a dialog, so the task was not sent. Ask the user to answer it there, then use action=send.`);
+        throw new Error(`${this.deps.agent.kind} started in ${rec.name}'s pane (${rec.paneId}) but is waiting on a dialog, so the task was not sent. Ask the user to answer it there, then use action=send.`);
       }
       // Over the socket agent.start returns at once (launch_pending); herdr sets interactive_ready
-      // once pi takes input.
+      // once the agent takes input.
       if (info?.interactive_ready === true && (info.agent_status === "idle" || info.agent_status === "done")) return;
       if (Date.now() > deadline) {
         this.save(rec);
-        throw new Error(`pi in ${rec.name}'s pane (${rec.paneId}) did not become ready for input; the task was not sent. Use action=send once it is.`);
+        throw new Error(`${this.deps.agent.kind} in ${rec.name}'s pane (${rec.paneId}) did not become ready for input; the task was not sent. Use action=send once it is.`);
       }
       await new Promise((r) => setTimeout(r, this.deps.readyPollMs ?? 500));
     }
@@ -254,11 +266,11 @@ export class Children {
     if (rec.closed) throw new Error(`${rec.name} is closed.`);
     const a = await call<{ agent?: AgentInfo }>("agent.get", { target: rec.paneId });
     const info = a.result?.agent;
-    if (!info) throw new Error(`${rec.name} is not running pi any more (${errorText(a)}).`);
+    if (!info) throw new Error(`${rec.name} is not running ${this.deps.agent.kind} any more (${errorText(a)}).`);
     if (info.agent_status === "blocked") throw new Error(`${rec.name} is waiting on a dialog in its pane (${rec.paneId}); the user has to answer it there first.`);
     rec.baseline = { completionSeq: info.completion_seq, stateSeq: info.state_change_seq };
     rec.sawWorking = info.agent_status === "working";
-    if (info.agent_session?.value) rec.sessionPath = info.agent_session.value;
+    if (info.agent_session?.value) rec.session = info.agent_session.value;
     let r = await call("agent.prompt", { target: rec.paneId, text }, 15_000);
     for (let i = 0; r.error?.code === "agent_not_ready" && i < 10; i++) {
       await new Promise((res) => setTimeout(res, this.deps.readyPollMs ?? 500));
@@ -309,10 +321,10 @@ export class Children {
       const pane = await call("pane.get", { pane_id: rec.paneId });
       if (pane.error?.code === "timeout" || pane.error?.code === "socket") return;
       const gone = !!pane.error;
-      this.finish(rec, gone ? `Herdr child "${rec.name}" was closed before it replied.` : `pi exited in herdr child "${rec.name}"'s pane (${rec.paneId}) before it replied.`, undefined, gone);
+      this.finish(rec, gone ? `Herdr child "${rec.name}" was closed before it replied.` : `${this.deps.agent.kind} exited in herdr child "${rec.name}"'s pane (${rec.paneId}) before it replied.`, undefined, gone);
       return;
     }
-    if (info.agent_session?.value) rec.sessionPath = info.agent_session.value;
+    if (info.agent_session?.value) rec.session = info.agent_session.value;
     const status = info.agent_status;
     if (status === "working" || status === "blocked") {
       rec.sawWorking = true;
@@ -322,11 +334,11 @@ export class Children {
     const seq = info.completion_seq;
     const completed = (seq !== undefined && seq !== rec.baseline?.completionSeq) || rec.sawWorking;
     if (!completed) return;
-    const reply = rec.sessionPath ? readReply(rec.sessionPath) : undefined;
+    const reply = rec.session ? await this.deps.agent.reply(rec) : undefined;
     const where = rec.where === "worktree" && rec.branch ? `worktree ${rec.branch}` : rec.where;
     const text = reply
       ? `Herdr child "${rec.name}" (${where}, pane ${rec.paneId}) replied:\n\n${reply}`
-      : `Herdr child "${rec.name}" (${where}, pane ${rec.paneId}) finished its turn, but its reply could not be read${rec.sessionPath ? ` from ${rec.sessionPath}` : ""}. Use action=read.`;
+      : `Herdr child "${rec.name}" (${where}, pane ${rec.paneId}) finished its turn, but its reply could not be read${rec.session ? ` from ${rec.session}` : ""}. Use action=read.`;
     this.finish(rec, text, reply);
   }
 
@@ -335,9 +347,9 @@ export class Children {
     const { call } = this.deps;
     const a = await call<{ agent?: AgentInfo }>("agent.get", { target: rec.paneId });
     const status = a.result?.agent?.agent_status ?? (rec.closed ? "closed" : "gone");
-    const path = a.result?.agent?.agent_session?.value ?? rec.sessionPath;
+    if (a.result?.agent?.agent_session?.value) rec.session = a.result.agent.agent_session.value;
     if (status === "idle" || status === "done" || status === "closed" || status === "gone") {
-      const reply = path ? readReply(path) : undefined;
+      const reply = rec.session ? await this.deps.agent.reply(rec) : undefined;
       return `${rec.name}: ${status}${rec.awaiting ? " (reply pending)" : ""}\n\n${reply ? `Last reply:\n${reply}` : "No reply yet."}`;
     }
     const r = await call("agent.read", { target: rec.paneId, source: "recent_unwrapped", lines: Math.min(Math.max(lines, 10), 400) });
@@ -375,7 +387,7 @@ export class Children {
     rec.closed = true;
     this.save(rec);
     const kept = rec.where === "worktree" && rec.branch ? ` Its checkout and branch ${rec.branch} stay (worktree rm ${rec.branch} removes the checkout).` : "";
-    return `Closed ${rec.name}'s pane; its pi session stays on disk${rec.sessionPath ? ` (${rec.sessionPath})` : ""}.${kept}`;
+    return `Closed ${rec.name}'s pane; its ${this.deps.agent.kind} session stays${rec.session ? ` (${rec.session})` : ""}.${kept}`;
   }
 
   /** Release every hold (session end); the records stay saved. */

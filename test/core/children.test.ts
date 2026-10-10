@@ -1,20 +1,20 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+// Shared verbatim by pi-herdr and opencode-herdr (test/core).
 import { describe, expect, it } from "vitest";
-import { type ChildRecord, Children, type ChildrenDeps, childPreamble, slugName } from "../src/children.ts";
+import { type ChildAgent, type ChildRecord, Children, type ChildrenDeps, childPreamble, slugName } from "../../src/core/children.ts";
 import { fakeCall } from "./fake.ts";
 
-function sessionFile(text: string): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "pi-herdr-child-"));
-  const file = path.join(dir, "child.jsonl");
-  writeFileSync(file, `${JSON.stringify({ type: "session", version: 3 })}\n${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text }] } })}\n`);
-  return file;
+/** A stand-in agent: `pi`-style arguments, replies looked up by session. */
+function testAgent(replies: Record<string, string>): ChildAgent {
+  return {
+    kind: "pi",
+    args: (opts, name) => ["--name", name, ...(opts.model ? ["--model", opts.model] : []), ...(opts.thinking ? ["--thinking", opts.thinking] : [])],
+    reply: async (rec) => (rec.session ? replies[rec.session] : undefined),
+  };
 }
 
 /** A herdr with one parent pane and the child panes it creates; agent state is set by the test. */
 function world(opts: { liveNames?: string[]; startError?: { code: string; message: string } } = {}) {
-  const session = sessionFile("All done: 3 files changed.");
+  const session = "/sessions/child.jsonl";
   const agent = { agent: "pi", interactive_ready: true, agent_status: "idle", completion_seq: 1 as number | undefined, state_change_seq: 1, agent_session: { kind: "path", value: session } };
   const state = { agent, paneGone: false, agentGone: false };
   const f = fakeCall({
@@ -35,6 +35,7 @@ function world(opts: { liveNames?: string[]; startError?: { code: string; messag
   const execs: string[][] = [];
   const deps: ChildrenDeps = {
     call: f.call,
+    agent: testAgent({ [session]: "All done: 3 files changed." }),
     selfPane: "w1:p1",
     exec: async (cmd, args) => {
       execs.push([cmd, ...args]);
@@ -172,7 +173,8 @@ describe("children", () => {
   });
 
   it("tells the child where it works", () => {
-    expect(childPreamble("w1:p1", { where: "worktree", branch: "b", cwd: "/r/.worktrees/b" })).toContain("git worktree of your own (/r/.worktrees/b) on branch b");
-    expect(childPreamble("w1:p1", { where: "tab", cwd: "/r" })).not.toContain("worktree");
+    expect(childPreamble("pi", "w1:p1", { where: "worktree", branch: "b", cwd: "/r/.worktrees/b" })).toContain("git worktree of your own (/r/.worktrees/b) on branch b");
+    expect(childPreamble("opencode", "w1:p1", { where: "tab", cwd: "/r" })).toMatch(/^\[You are a child opencode session\. Another opencode session/u);
+    expect(childPreamble("pi", "w1:p1", { where: "tab", cwd: "/r" })).not.toContain("worktree");
   });
 });

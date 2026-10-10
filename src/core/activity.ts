@@ -1,13 +1,16 @@
-// Work that runs outside the agent's turn, collected from pi's event bus into the pane token `bg`.
+// Shared verbatim by pi-herdr and opencode-herdr (src/core).
 //
-// Extensions hold a channel with `{ active: true, label, id? }` and release it with
+// Work that runs outside the agent's turn, shown as the pane token `bg`: holds on pi's event bus
+// (pi-herdr), or the host's own awaited children (both hosts).
+//
+// In pi, extensions hold a channel with `{ active: true, label, id? }` and release it with
 // `{ active: false, id? }`:
 //   herdr:background  background work that will wake the agent (async subagents, herdr children)
 //   herdr:working     work running outside the main turn (pi-plan-mode's planner runs)
 // A release without an id ends the oldest hold on that channel.
 //
-// herdr itself still shows the pane idle or done meanwhile: only herdr's pi integration reports
-// state, and it reads only `herdr:blocked`. The token is what says the agent is not finished.
+// herdr itself still shows the pane idle or done meanwhile: only herdr's own integration for the
+// agent reports state. The token is what says the agent is not finished.
 
 export const ACTIVITY_CHANNELS = ["herdr:background", "herdr:working"] as const;
 export type ActivityChannel = (typeof ACTIVITY_CHANNELS)[number];

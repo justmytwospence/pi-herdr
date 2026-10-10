@@ -86,6 +86,13 @@ on that channel. pi-herdr emits `herdr:ready` when it becomes active, so an exte
 token before pi-herdr loaded can send it again. `herdr:blocked` (waiting on the user) is not
 handled here: herdr's own pi integration reads it.
 
+## Layout
+
+`src/core` (and `test/core`) is shared verbatim with
+[opencode-herdr](https://github.com/justmytwospence/opencode-herdr): the herdr socket client,
+metadata reporters, children, PR status and text helpers. A host supplies a `ChildAgent` (which
+agent herdr starts, its arguments, how its reply is read); `src/session.ts` is pi's.
+
 ## Development
 
 ```sh

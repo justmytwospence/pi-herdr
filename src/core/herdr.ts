@@ -1,3 +1,5 @@
+// Shared verbatim by pi-herdr and opencode-herdr (src/core).
+//
 // The herdr socket API: one JSON line `{ id, method, params }` on the Unix socket at
 // $HERDR_SOCKET_PATH, answered by one JSON line `{ id, result }` or `{ id, error }`.
 // Every call resolves (never throws): a missing server, a timeout or an error reply all come back
@@ -59,6 +61,15 @@ export function socketCall(socketPath: string): Call {
 
 /** A day, herdr's ceiling for metadata TTLs. */
 export const MAX_TTL_MS = 86_400_000;
+
+/**
+ * Split beside a pane when it is wide (cells are about twice as tall as wide, so
+ * width >= 2.2 x height) and both halves keep 80 columns; otherwise split below.
+ */
+export function splitDirection(rect: { width: number; height: number } | undefined): "right" | "down" {
+  if (!rect) return "right";
+  return rect.width >= 2.2 * rect.height && rect.width >= 161 ? "right" : "down";
+}
 
 export function errorText(reply: Reply): string {
   return reply.error ? `${reply.error.message} (${reply.error.code})` : "no reply";

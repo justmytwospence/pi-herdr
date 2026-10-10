@@ -1,4 +1,4 @@
-import type { Call, Reply } from "../src/herdr.ts";
+import type { Call, Reply } from "../../src/core/herdr.ts";
 
 export interface Logged {
   method: string;

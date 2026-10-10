@@ -12,8 +12,8 @@
 // pi-herdr emits `herdr:ready` once it is active, so an extension that set a token before pi-herdr
 // loaded can send it again. `herdr:blocked` is not handled here: herdr's own pi integration
 // reads it.
-import type { Call } from "./herdr.ts";
-import type { PaneReporter } from "./report.ts";
+import { type Call, splitDirection } from "./core/herdr.ts";
+import type { PaneReporter } from "./core/report.ts";
 
 export interface TokenEvent {
   key: string;
@@ -39,15 +39,6 @@ interface Layout {
   zoomed?: boolean;
   focused_pane_id?: string;
   panes?: { pane_id: string; focused?: boolean; rect?: { width: number; height: number } }[];
-}
-
-/**
- * Split beside a pane when it is wide (cells are about twice as tall as wide, so
- * width >= 2.2 x height) and both halves keep 80 columns; otherwise split below.
- */
-export function splitDirection(rect: { width: number; height: number } | undefined): "right" | "down" {
-  if (!rect) return "right";
-  return rect.width >= 2.2 * rect.height && rect.width >= 161 ? "right" : "down";
 }
 
 export class Bridge {
