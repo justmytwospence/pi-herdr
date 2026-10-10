@@ -25,10 +25,9 @@ Sidebar rows that render them (`~/.config/herdr/config.toml`):
 
 ```toml
 [ui.sidebar.agents]
-rows = [
-  ["state_icon", "workspace", { token = "$bg", dim = true }],
-  [{ token = "agent", dim = true }, "$task"],
-]
+rows = [["state_icon", "workspace", { token = "$bg", dim = true }]]
+# or, with a second line per agent for its model and task:
+# rows = [["state_icon", "workspace", { token = "$bg", dim = true }], [{ token = "agent", dim = true }, "$task"]]
 
 [ui.sidebar.spaces]
 rows = [
